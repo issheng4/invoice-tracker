@@ -2,38 +2,65 @@
 
 import sys
 from datetime import date
+import sqlite3
 
-# Type alias for invoice dictionary
-Invoice = dict[str, object]
+DB_NAME = 'invoices.db'
 
-invoices: dict[int, Invoice] = {}
-last_id = 0
+def init_db() -> None:
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                description TEXT NOT NULL,
+                amount REAL NOT NULL,
+                has_been_paid INTEGER NOT NULL
+            )
+        ''')
+        conn.commit()
 
 def add_invoice(event_date: date, description: str, amount: float, has_been_paid: bool) -> None:
-    """Add new invoice to invoices list"""
-    global last_id
-    last_id += 1
-    invoice: Invoice = {
-        'id': last_id,
-        'date': event_date,
-        'description': description,
-        'amount': amount,
-        'has_been_paid': has_been_paid
-    }
-    invoices[last_id] = invoice
+    """Adds a new invoice to the database."""
+
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO Invoices (date, description, amount, has_been_paid)
+            VALUES (?, ?, ?, ?);
+        ''', (event_date.isoformat(), description, amount, int(has_been_paid)))
+        conn.commit()
+
 
 def edit_invoice(id: int, field: str, value: object) -> None:
-    if id in invoices:
-        invoices[id][field] = value
+    """Edits a value of an invoice in the database."""
+
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE Invoices
+            SET ? = ?
+            WHERE id = ?;
+        ''', (field, value, id))
+        conn.commit()
 
 
 def view_invoices() -> None:
-    print()
-    for invoice in invoices.values():
-        print(f'INVOICE {invoice["id"]}:')
-        print(f'{invoice["date"]} | {invoice["description"]}')
-        print(f'£{invoice["amount"]:.2f} {"received" if invoice["has_been_paid"] else "awaiting"}')
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, date, description, amount, has_been_paid
+            FROM Invoices
+        ''')
+        rows = cursor.fetchall()
         print()
+        for row in rows:
+            invoice_id, date_str, description, amount, has_been_paid = row
+            status = 'received' if has_been_paid else 'awaiting'
+            print(f'INVOICE {invoice_id}:')
+            print(f'{date_str} | {description}')
+            print(f'£{amount:.2f} {status}')
+            print()
 
 def ask_for_main_menu_option() -> str:
     while True:
@@ -91,9 +118,11 @@ def ask_for_invoice_id() -> int:
         try:
             invoice_id_str = input('\nEnter the number of the invoice you would like to edit: ')
             invoice_id = int(invoice_id_str)
-            if invoice_id not in invoices:
+
+            if not 1 <= invoice_id <= len(invoices):
                 print('Invalid number. Please enter a valid invoice number.')
                 continue
+
             return invoice_id
         except ValueError:
             print('Invalid input. Please enter a number.')
@@ -113,6 +142,8 @@ def ask_for_edit_invoice_option() -> str:
 
 
 def main() -> None:
+    init_db()
+    
     while True:
         main_menu_input = ask_for_main_menu_option()
 
@@ -126,8 +157,10 @@ def main() -> None:
 
         elif main_menu_input == '2':
             invoice_id = ask_for_invoice_id()
+
             edit_invoice_input = ask_for_edit_invoice_option()
-            invoice = invoices.get(invoice_id)
+
+            invoice = next((inv for inv in invoices if inv['id'] == invoice_id), None)
             if not invoice:
                 print('Invoice not found.')
                 continue
