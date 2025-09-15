@@ -6,8 +6,15 @@ import sqlite3
 
 DB_NAME = 'invoices.db'
 
+#--------------------------------------
+# Database config functions
+#--------------------------------------
+
+def get_db_connection():
+    return sqlite3.connect(DB_NAME)
+
 def init_db() -> None:
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS Invoices (
@@ -20,47 +27,89 @@ def init_db() -> None:
         ''')
         conn.commit()
 
+#--------------------------------------
+# Database command functions
+#--------------------------------------
+
 def add_invoice(event_date: date, description: str, amount: float, has_been_paid: bool) -> None:
     """Adds a new invoice to the database."""
 
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO Invoices (date, description, amount, has_been_paid)
-            VALUES (?, ?, ?, ?);
+            VALUES (?, ?, ?, ?)
         ''', (event_date.isoformat(), description, amount, int(has_been_paid)))
         conn.commit()
 
+def retrieve_invoice_data(id: int, field: str) -> str:
+    """Retrieves a value of an invoice in the database"""
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT {field} FROM Invoices
+            WHERE id = ?
+        ''', (id,))
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError('Invoice not found')
+        return str(row[0])
+    
+def validate_invoice_id(id: int) -> bool:
+    """Checks if invoice ID number input is valid"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id FROM Invoices
+            WHERE id = ?
+        ''', (id,))
+        row = cursor.fetchone()
+        return row is not None
 
 def edit_invoice(id: int, field: str, value: object) -> None:
     """Edits a value of an invoice in the database."""
 
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('''
+        cursor.execute(f'''
             UPDATE Invoices
-            SET ? = ?
-            WHERE id = ?;
-        ''', (field, value, id))
+            SET {field} = ?
+            WHERE id = ?
+        ''', (value, id))
         conn.commit()
 
 
-def view_invoices() -> None:
-    with sqlite3.connect(DB_NAME) as conn:
+def get_total_amount() -> float:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT SUM(amount) FROM Invoices')
+        total = cursor.fetchone()[0]
+        return total or 0.0
+
+def display_invoices() -> None:
+    with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
             SELECT id, date, description, amount, has_been_paid
             FROM Invoices
         ''')
         rows = cursor.fetchall()
-        print()
+        print("-" * 75)
+        print(f"{'ID':<10} {'Date':<12} {'Description':<30} {'Amount':>9}  {'Status':<10}")
+        print("-" * 75)
         for row in rows:
             invoice_id, date_str, description, amount, has_been_paid = row
             status = 'received' if has_been_paid else 'awaiting'
-            print(f'INVOICE {invoice_id}:')
-            print(f'{date_str} | {description}')
-            print(f'£{amount:.2f} {status}')
-            print()
+            print(f"{invoice_id:<10} {date_str:<12} {description:<30} £{amount:>8.2f}  {status:<10}")
+        total = get_total_amount()
+        print("-" * 75)
+        print(f"{'':<10} {'':<12} {'TOTAL':<30} £{total:>8.2f}  {'':<10}")
+        print("-" * 75)
+
+#--------------------------------------
+# Ask-for-valid-input functions
+#--------------------------------------
 
 def ask_for_main_menu_option() -> str:
     while True:
@@ -116,11 +165,11 @@ def ask_for_invoice_paid_status() -> bool:
 def ask_for_invoice_id() -> int:
     while True:
         try:
-            invoice_id_str = input('\nEnter the number of the invoice you would like to edit: ')
+            invoice_id_str = input('\nEnter the ID number of the invoice you would like to edit: ')
             invoice_id = int(invoice_id_str)
 
-            if not 1 <= invoice_id <= len(invoices):
-                print('Invalid number. Please enter a valid invoice number.')
+            if not validate_invoice_id(invoice_id):
+                print('Invalid number. Please enter a valid invoice ID.')
                 continue
 
             return invoice_id
@@ -140,6 +189,9 @@ def ask_for_edit_invoice_option() -> str:
         else:
             print('Invalid choice. Please enter a number between 1 and 4.')
 
+#--------------------------------------
+# Main
+#--------------------------------------
 
 def main() -> None:
     init_db()
@@ -160,31 +212,27 @@ def main() -> None:
 
             edit_invoice_input = ask_for_edit_invoice_option()
 
-            invoice = next((inv for inv in invoices if inv['id'] == invoice_id), None)
-            if not invoice:
-                print('Invoice not found.')
-                continue
-
             if edit_invoice_input == '1':
-                print(f'\nCurrent status: {invoice.get("has_been_paid")}')
+                print(f'\nCurrent status: {retrieve_invoice_data(invoice_id, "has_been_paid")}')
                 edit_invoice(invoice_id, 'has_been_paid', ask_for_invoice_paid_status())
 
             elif edit_invoice_input == '2':
-                print(f'\nCurrent date: {invoice.get("date")}')
+                print(f'\nCurrent date: {retrieve_invoice_data(invoice_id, "date")}')
                 edit_invoice(invoice_id, 'date', ask_for_invoice_date())
 
             elif edit_invoice_input == '3':
-                print(f'\nCurrent description: {invoice.get("description")}')
+                print(f'\nCurrent description: {retrieve_invoice_data(invoice_id, "description")}')
                 edit_invoice(invoice_id, 'description', ask_for_invoice_description())
 
             else:
-                print(f'\nCurrent fee amount: {invoice.get("amount")}')
+                print(f'\nCurrent fee amount: {retrieve_invoice_data(invoice_id, "amount")}')
                 edit_invoice(invoice_id, 'amount', ask_for_invoice_amount())
 
         elif main_menu_input == '3':
-            view_invoices()
+            display_invoices()
+
         else:
-            print('\nGoodbye!')
+            print('\nBye!')
             sys.exit(0)
 
 
