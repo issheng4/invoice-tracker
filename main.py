@@ -107,17 +107,17 @@ def display_invoices() -> None:
             FROM Invoices
         ''')
         rows = cursor.fetchall()
-        print('-' * 75)
-        print(f"{'ID':<10} {'Date':<12} {'Description':<30} {'Amount':>9}  {'Status':<10}")
-        print('-' * 75)
+        print('-' * 80)
+        print(f"{'ID':<10} {'Date':<12} {'Description':<35} {'Amount':>9}  {'Status':<10}")
+        print('-' * 80)
         for row in rows:
             invoice_id, date_str, description, amount, has_been_paid = row
             status = 'paid' if has_been_paid else 'awaiting'
-            print(f'{invoice_id:<10} {date_str:<12} {description:<30} £{amount:>8.2f}  {status:<10}')
+            print(f'{invoice_id:<10} {date_str:<12} {description:<35} £{amount:>8.2f}  {status:<10}')
         total = get_total_amount()
-        print('-' * 75)
-        print(f"{'':<10} {'':<12} {'TOTAL':<30} £{total:>8.2f}  {'':<10}")
-        print('-' * 75)
+        print('-' * 80)
+        print(f"{'':<10} {'':<12} {'TOTAL':<35} £{total:>8.2f}  {'':<10}")
+        print('-' * 80)
 
 #--------------------------------------
 # Ask-for-valid-input functions
